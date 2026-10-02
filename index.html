@@ -1,0 +1,562 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>함께 탈출! - 2D 협동 플랫폼</title>
+  <style>
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: #0b0e1f; color: #e8ebff;
+      font-family: 'Apple SD Gothic Neo', 'Malgun Gothic', 'Noto Sans KR', sans-serif; overflow: hidden; }
+    #game { position: fixed; inset: 0; }
+    .hidden { display: none !important; }
+
+    .panel { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%);
+      background: rgba(20, 24, 52, .96); border: 1px solid #3b4280; border-radius: 16px;
+      padding: 28px 32px; min-width: 360px; max-width: 92vw; box-shadow: 0 20px 60px rgba(0,0,0,.5); z-index: 10; }
+    .panel h1 { margin: 0 0 4px; font-size: 28px; }
+    .panel h2 { margin: 0 0 12px; font-size: 22px; }
+    .sub { color: #98a0d8; font-size: 14px; margin-bottom: 18px; }
+    .row { display: flex; gap: 8px; margin-top: 10px; }
+    input { flex: 1; min-width: 0; padding: 11px 12px; border-radius: 10px; border: 1px solid #3b4280;
+      background: #0f1330; color: #fff; font-size: 16px; outline: none; }
+    input:focus { border-color: #6f7cff; }
+    #codeInput { text-transform: uppercase; letter-spacing: 4px; text-align: center; }
+    button { padding: 11px 18px; border-radius: 10px; border: 0; background: #5b6cff; color: #fff;
+      font-size: 16px; font-weight: 700; cursor: pointer; }
+    button:hover { background: #7280ff; }
+    button:disabled { background: #3a3f70; cursor: default; }
+    button.ghost { background: #2a3066; }
+    button.ghost:hover { background: #363e82; }
+    hr { border: 0; border-top: 1px solid #2e3466; margin: 18px 0 8px; }
+
+    #roomCode { font-size: 44px; letter-spacing: 8px; font-weight: 800; text-align: center; margin: 4px 0 12px;
+      color: #ffd43b; cursor: pointer; user-select: all; }
+    #playerList { list-style: none; margin: 0 0 14px; padding: 0; }
+    #playerList li { display: flex; align-items: center; gap: 10px; padding: 9px 12px; margin-bottom: 6px;
+      background: #0f1330; border-radius: 10px; }
+    .dot { width: 18px; height: 18px; border-radius: 5px; border: 2px solid rgba(0,0,0,.4); flex: none; }
+    .pname { flex: 1; }
+    .badge { font-size: 13px; padding: 3px 9px; border-radius: 999px; background: #2a3066; color: #98a0d8; }
+    .badge.ok { background: #1f7a52; color: #d6ffe9; }
+    #lobbyMsg { color: #98a0d8; font-size: 14px; margin: 6px 0 12px; min-height: 20px; }
+
+    #hud { position: fixed; top: 8px; left: 0; right: 0; display: flex; justify-content: center; gap: 10px; z-index: 5; pointer-events: none; }
+    .chip { background: rgba(14, 18, 44, .85); border: 1px solid #343b7a; border-radius: 999px; padding: 6px 14px; font-size: 15px; font-weight: 700; }
+    #hudHint { position: fixed; bottom: 10px; left: 50%; transform: translateX(-50%); z-index: 5; max-width: 92vw;
+      background: rgba(14, 18, 44, .8); border-radius: 10px; padding: 8px 14px; font-size: 14px; color: #c9cffc; text-align: center; pointer-events: none; }
+    #toast { position: fixed; top: 56px; left: 50%; transform: translateX(-50%); z-index: 20; background: #ffd43b; color: #1b1d36;
+      padding: 10px 20px; border-radius: 12px; font-weight: 800; font-size: 17px; box-shadow: 0 8px 24px rgba(0,0,0,.4); max-width: 92vw; text-align: center; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0 14px; }
+    td { padding: 6px 4px; border-bottom: 1px solid #2e3466; }
+    td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+    .total td { font-weight: 800; color: #ffd43b; border-bottom: 0; }
+  </style>
+</head>
+<body>
+  <div id="game"></div>
+
+  <div id="menu" class="panel">
+    <h1>함께 탈출!</h1>
+    <div class="sub">2~4명이 협동해서 열쇠를 얻고 모두 함께 탈출하세요.</div>
+    <div class="row"><input id="nameInput" maxlength="10" placeholder="닉네임"></div>
+    <div class="row"><button id="btnCreate" style="flex:1">방 만들기</button></div>
+    <hr>
+    <div class="row">
+      <input id="codeInput" maxlength="4" placeholder="CODE">
+      <button id="btnJoin" class="ghost">입장</button>
+    </div>
+  </div>
+
+  <div id="lobby" class="panel hidden">
+    <h2>대기실</h2>
+    <div class="sub">방 코드를 친구에게 알려 주세요 (클릭하면 복사)</div>
+    <div id="roomCode">----</div>
+    <ul id="playerList"></ul>
+    <div id="lobbyMsg"></div>
+    <div class="row">
+      <button id="btnReady" style="flex:1">준비 완료</button>
+      <button id="btnLeave" class="ghost">나가기</button>
+    </div>
+  </div>
+
+  <div id="hud" class="hidden">
+    <div class="chip" id="hudStage">STAGE</div>
+    <div class="chip" id="hudTime">0:00.0</div>
+    <div class="chip" id="hudKey">🗝 열쇠 없음</div>
+    <div class="chip" id="hudGoal">탈출 0/0</div>
+  </div>
+  <div id="hudHint" class="hidden"></div>
+
+  <div id="results" class="panel hidden">
+    <h2>🎉 탈출 성공!</h2>
+    <table id="resultTable"></table>
+    <div class="row"><button id="btnBack" style="flex:1">대기실로 돌아가기</button></div>
+  </div>
+
+  <div id="toast" class="hidden"></div>
+
+  <script src="/vendor/phaser.min.js"></script>
+  <script src="/socket.io/socket.io.js"></script>
+  <script src="/shared.js"></script>
+  <script>
+/* Pico Park 스타일 협동 플랫폼 - 클라이언트 (Phaser 3 + Arcade Physics + Socket.io)
+ *
+ * - 내 캐릭터: 로컬 Arcade Physics로 직접 시뮬레이션 (조작 지연 없음)
+ * - 다른 플레이어: 서버 스냅샷 위치로 부드럽게 따라가는 "immovable 바디"
+ *   -> 내 캐릭터가 그 위에 올라탈 수 있다 (머리 위 탑 쌓기)
+ * - 버튼/문/열쇠/사망/클리어는 서버가 권위를 가진다.
+ */
+(() => {
+  'use strict';
+
+  const { T, WIDTH, HEIGHT, STAGES, PLAYER, COLORS, COLOR_NAMES } = window.SHARED;
+  const DOOR_COLORS = { A: 0xffa94d, B: 0x74c0fc, C: 0x63e6be, D: 0xf783ac, L: 0xb197fc };
+  const SEND_MS = 33;
+
+  const socket = io();
+  const $ = (id) => document.getElementById(id);
+  const panels = { menu: $('menu'), lobby: $('lobby'), results: $('results'), hud: $('hud') };
+  const NET = { players: {}, snap: null, attempt: 0, playing: false };
+
+  const fmt = (ms) => {
+    const s = ms / 1000, m = Math.floor(s / 60);
+    return m + ':' + (s - m * 60).toFixed(1).padStart(4, '0');
+  };
+  const hex = (n) => '#' + n.toString(16).padStart(6, '0');
+
+  // ---------- UI ----------
+  function show(name) {
+    for (const k in panels) panels[k].classList.toggle('hidden', k !== name);
+    $('hudHint').classList.toggle('hidden', name !== 'hud');
+  }
+  let toastTimer = null;
+  function toast(msg, ms = 2600) {
+    const el = $('toast');
+    el.textContent = msg;
+    el.classList.remove('hidden');
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => el.classList.add('hidden'), ms);
+  }
+  function stopGame() {
+    NET.playing = false;
+    NET.snap = null;
+    if (game.scene.isActive('GameScene')) game.scene.stop('GameScene');
+  }
+
+  try { $('nameInput').value = localStorage.getItem('coopName') || ''; } catch (e) { /* ignore */ }
+  if (!$('nameInput').value) $('nameInput').value = '플레이어' + Math.floor(Math.random() * 90 + 10);
+  const myName = () => {
+    const n = $('nameInput').value.trim() || '플레이어';
+    try { localStorage.setItem('coopName', n); } catch (e) { /* ignore */ }
+    return n;
+  };
+  const onJoined = (res) => { if (!res || !res.ok) toast((res && res.error) || '입장에 실패했습니다.'); };
+
+  $('btnCreate').onclick = () => socket.emit('createRoom', { name: myName() }, onJoined);
+  $('btnJoin').onclick = () => {
+    const code = $('codeInput').value.trim().toUpperCase();
+    if (code.length !== 4) return toast('방 코드 4자리를 입력하세요.');
+    socket.emit('joinRoom', { code, name: myName() }, onJoined);
+  };
+  $('codeInput').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('btnJoin').click(); });
+  $('btnLeave').onclick = () => { socket.emit('leaveRoom'); stopGame(); show('menu'); };
+  $('btnBack').onclick = () => socket.emit('backToLobby');
+  $('btnReady').onclick = () => {
+    const me = NET.lobby && NET.lobby.players.find((p) => p.id === socket.id);
+    socket.emit('setReady', !(me && me.ready));
+  };
+  $('roomCode').onclick = () => {
+    if (navigator.clipboard) navigator.clipboard.writeText($('roomCode').textContent).then(() => toast('방 코드를 복사했어요!', 1200));
+  };
+
+  // 게임 중 방향키/스페이스가 페이지를 스크롤하지 않게
+  window.addEventListener('keydown', (e) => {
+    const typing = document.activeElement && document.activeElement.tagName === 'INPUT';
+    if (NET.playing && !typing && ['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', ' '].includes(e.key)) e.preventDefault();
+  });
+
+  // ---------- 소켓 이벤트 ----------
+  socket.on('lobby', (d) => {
+    NET.lobby = d;
+    stopGame();
+    show('lobby');
+    $('roomCode').textContent = d.code;
+    const ul = $('playerList');
+    ul.textContent = '';
+    d.players.forEach((p) => {
+      const li = document.createElement('li');
+      const dot = document.createElement('span');
+      dot.className = 'dot'; dot.style.background = hex(COLORS[p.color]);
+      const nm = document.createElement('span');
+      nm.className = 'pname';
+      nm.textContent = p.name + (p.id === socket.id ? ' (나)' : '') + (p.id === d.hostId ? ' 👑' : '');
+      const bd = document.createElement('span');
+      bd.className = 'badge' + (p.ready ? ' ok' : '');
+      bd.textContent = p.ready ? '준비 완료' : '대기 중';
+      li.append(dot, nm, bd);
+      ul.appendChild(li);
+    });
+    const me = d.players.find((p) => p.id === socket.id);
+    $('btnReady').textContent = me && me.ready ? '준비 취소' : '준비 완료';
+    $('btnReady').disabled = d.phase === 'starting';
+    $('lobbyMsg').textContent = d.phase === 'starting' ? '곧 게임이 시작됩니다...'
+      : d.players.length < d.minPlayers ? `최소 ${d.minPlayers}명이 필요해요. (${d.players.length}/${d.maxPlayers})`
+      : '모든 플레이어가 준비하면 시작됩니다.';
+  });
+
+  socket.on('stageStart', (d) => {
+    NET.players = {};
+    d.players.forEach((p) => { NET.players[p.id] = p; });
+    NET.snap = null;
+    NET.attempt = d.attempt;
+    NET.playing = true;
+    show('hud');
+    $('hudStage').textContent = `STAGE ${d.stageIdx + 1}/${d.total} · ${d.name}`;
+    $('hudHint').textContent = d.hint + '   [← → / A D 이동, ↑ / W / Space 점프]';
+    $('hudTime').textContent = '0:00.0';
+    $('hudKey').textContent = '🗝 열쇠 없음';
+    if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+    if (d.reason) {
+      if (d.reason.type === 'dead') {
+        toast(`${d.reason.name} 님이 ${d.reason.cause === 'spike' ? '가시에 찔렸어요' : '낭떠러지로 떨어졌어요'}! 스테이지 재시작`);
+      } else if (d.reason.type === 'left') toast(`${d.reason.name} 님이 나가서 스테이지를 다시 시작합니다.`);
+    }
+    game.scene.start('GameScene', { stageIdx: d.stageIdx, attempt: d.attempt, spawns: d.spawns });
+  });
+
+  socket.on('snap', (d) => { NET.snap = d; });
+  socket.on('keyTaken', (d) => toast(`🗝 ${d.by} 님이 열쇠를 얻었어요! 잠긴 문이 열립니다.`));
+  socket.on('stageCleared', (d) => toast(d.last ? '🎉 마지막 스테이지 클리어!' : `✅ ${d.name} 클리어! (${fmt(d.time)})`, 2300));
+  socket.on('notice', (msg) => toast(msg));
+  socket.on('results', (d) => {
+    NET.playing = false;
+    show('results');
+    const tb = $('resultTable');
+    tb.textContent = '';
+    const addRow = (a, b, cls) => {
+      const tr = document.createElement('tr');
+      if (cls) tr.className = cls;
+      const td1 = document.createElement('td'), td2 = document.createElement('td');
+      td1.textContent = a; td2.textContent = b;
+      tr.append(td1, td2);
+      tb.appendChild(tr);
+    };
+    d.stageTimes.forEach((t, i) => addRow(`STAGE ${i + 1} · ${d.stageNames[i]}`, fmt(t)));
+    addRow('총 사망(재시작) 횟수', d.deaths + '회');
+    addRow('전체 소요 시간', fmt(d.total), 'total');
+  });
+  socket.on('disconnect', () => { stopGame(); show('menu'); toast('서버와 연결이 끊겼습니다.', 4000); });
+
+  // ---------- Phaser 씬 ----------
+  class BootScene extends Phaser.Scene {
+    constructor() { super('BootScene'); }
+    create() {
+      this.cameras.main.setBackgroundColor('#161a33');
+      this.add.text(WIDTH / 2, HEIGHT / 2, '함께 탈출!', { fontFamily: 'sans-serif', fontSize: '72px', color: '#252b5c' }).setOrigin(0.5);
+    }
+  }
+
+  class GameScene extends Phaser.Scene {
+    constructor() { super('GameScene'); }
+
+    init(data) {
+      this.stageIdx = data.stageIdx;
+      this.attempt = data.attempt;
+      this.spawns = data.spawns || {};
+      this.remotes = {};
+      this.dead = false;
+      this.keyRequested = false;
+      this.sendAcc = 0;
+      this.lastGround = -1000;
+      this.jumpBuf = -1000;
+      this.doorOpen = {};
+    }
+
+    makeTextures() {
+      COLORS.forEach((col, i) => {
+        const key = 'pl' + i;
+        if (this.textures.exists(key)) return;
+        const g = this.make.graphics({ x: 0, y: 0, add: false });
+        g.fillStyle(col, 1); g.fillRoundedRect(0, 0, PLAYER.w, PLAYER.h, 7);
+        g.lineStyle(2, 0x000000, 0.35); g.strokeRoundedRect(1, 1, PLAYER.w - 2, PLAYER.h - 2, 7);
+        g.fillStyle(0xffffff, 1); g.fillCircle(14, 13, 4.5); g.fillCircle(22, 13, 4.5);
+        g.fillStyle(0x111111, 1); g.fillCircle(16, 13, 2.2); g.fillCircle(24, 13, 2.2);
+        g.generateTexture(key, PLAYER.w, PLAYER.h);
+        g.destroy();
+      });
+    }
+
+    create() {
+      const st = (this.stage = STAGES[this.stageIdx]);
+      this.cameras.main.setBackgroundColor('#161a33');
+      this.physics.world.gravity.y = PLAYER.gravity;
+      this.physics.world.setBounds(0, 0, WIDTH, HEIGHT);
+      this.physics.world.setBoundsCollision(true, true, true, false); // 아래는 열어 둠 (낭떠러지)
+      this.makeTextures();
+
+      // 배경 격자
+      const bg = this.add.graphics();
+      bg.lineStyle(1, 0xffffff, 0.035);
+      for (let x = 0; x <= WIDTH; x += T) bg.lineBetween(x, 0, x, HEIGHT);
+      for (let y = 0; y <= HEIGHT; y += T) bg.lineBetween(0, y, WIDTH, y);
+
+      // 벽/바닥
+      this.solids = this.physics.add.staticGroup();
+      st.solids.forEach((s) => {
+        const r = this.add.rectangle(s.x + s.w / 2, s.y + s.h / 2, s.w, s.h, 0x39406e).setStrokeStyle(2, 0x5560a8);
+        this.solids.add(r);
+      });
+
+      // 문 (연결된 버튼 색과 동일한 색)
+      this.doorGroup = this.physics.add.staticGroup();
+      this.doorViews = {};
+      st.doors.forEach((d) => {
+        const r = this.add.rectangle(d.x + d.w / 2, d.y + d.h / 2, d.w, d.h, DOOR_COLORS[d.id] || 0xffa94d, 0.95)
+          .setStrokeStyle(3, 0x000000, 0.4);
+        r.setData('id', d.id);
+        this.doorGroup.add(r);
+        const label = d.id === 'L'
+          ? this.add.text(d.x + d.w / 2, d.y + d.h / 2, 'KEY\nLOCK', { fontFamily: 'sans-serif', fontSize: '11px', fontStyle: 'bold', color: '#2a1a55', align: 'center' }).setOrigin(0.5)
+          : null;
+        this.doorViews[d.id] = { rect: r, label };
+        this.doorOpen[d.id] = false;
+      });
+
+      // 버튼
+      this.btnViews = [];
+      this.btnZones = [];
+      st.buttons.forEach((b) => {
+        const doorId = Object.keys(st.links).find((k) => st.links[k].includes(b.id));
+        const col = DOOR_COLORS[doorId] || 0xffa94d;
+        this.add.rectangle(b.x + T / 2, b.y + T - 3, T - 4, 6, 0x1c1c28);
+        const plate = this.add.rectangle(b.x + T / 2, b.y + T - 9, T - 10, 10, col).setStrokeStyle(2, 0x000000, 0.4);
+        this.btnViews.push({ id: b.id, plate, y0: b.y + T - 9 });
+        this.btnZones.push({ id: b.id, rect: new Phaser.Geom.Rectangle(b.x + 4, b.y + T - 14, T - 8, 14) });
+      });
+
+      // 가시
+      this.hazards = [];
+      const sg = this.add.graphics();
+      st.spikes.forEach((s) => {
+        const n = s.w / T;
+        for (let i = 0; i < n * 2; i++) {
+          const x0 = s.x + i * 20;
+          sg.fillStyle(0xff6b6b, 1);
+          sg.fillTriangle(x0 + 1, s.y + T, x0 + 10, s.y + T * 0.4, x0 + 19, s.y + T);
+          sg.lineStyle(1.5, 0x5a1010, 0.8);
+          sg.strokeTriangle(x0 + 1, s.y + T, x0 + 10, s.y + T * 0.4, x0 + 19, s.y + T);
+        }
+        this.hazards.push(new Phaser.Geom.Rectangle(s.x + 4, s.y + T * 0.5, s.w - 8, T * 0.5));
+      });
+
+      // 열쇠
+      if (st.key) {
+        const ring = this.add.circle(0, -7, 8, 0xffd43b, 0).setStrokeStyle(4, 0xffd43b);
+        const shaft = this.add.rectangle(0, 6, 4, 18, 0xffd43b);
+        const tooth = this.add.rectangle(5, 11, 8, 3, 0xffd43b);
+        this.keyObj = this.add.container(st.key.x, st.key.y, [ring, shaft, tooth]).setDepth(5);
+        this.tweens.add({ targets: this.keyObj, y: st.key.y - 5, duration: 700, yoyo: true, repeat: -1, ease: 'Sine.easeInOut' });
+        this.keyRect = new Phaser.Geom.Rectangle(st.key.x - 14, st.key.y - 18, 28, 36);
+      }
+
+      // 탈출 문
+      const gl = st.goal;
+      this.goalRect = new Phaser.Geom.Rectangle(gl.x, gl.y, gl.w, gl.h);
+      this.add.rectangle(gl.x + gl.w / 2, gl.y + gl.h / 2, gl.w, gl.h, 0x38d9a9, 0.22).setStrokeStyle(3, 0x38d9a9, 0.9);
+      this.add.text(gl.x + gl.w / 2, gl.y + gl.h / 2, 'EXIT', { fontFamily: 'sans-serif', fontSize: '20px', fontStyle: 'bold', color: '#b8ffe9' }).setOrigin(0.5);
+
+      // 내 캐릭터
+      const info = NET.players[socket.id] || { color: 0, name: '나' };
+      const sp = this.spawns[socket.id] || st.spawns[0];
+      this.me = this.physics.add.sprite(sp.x, sp.y - PLAYER.h / 2 - 1, 'pl' + info.color).setDepth(10);
+      this.me.setCollideWorldBounds(true);
+      this.me.body.setMaxVelocity(400, 900);
+      this.meLabel = this.makeLabel(info.name + ' (나)');
+      this.meRect = new Phaser.Geom.Rectangle();
+
+      // 충돌: 벽, 문(열리면 통과), 다른 플레이어(머리 위에 올라타기)
+      this.physics.add.collider(this.me, this.solids);
+      this.physics.add.collider(this.me, this.doorGroup, null, (me, door) => !this.doorOpen[door.getData('id')]);
+      this.remoteGroup = this.physics.add.group({ allowGravity: false, immovable: true });
+      this.physics.add.collider(this.me, this.remoteGroup);
+
+      // 키 입력 (capture=false: 입력창 타이핑을 막지 않도록)
+      this.keys = this.input.keyboard.addKeys(
+        { left: 'LEFT', right: 'RIGHT', up: 'UP', a: 'A', d: 'D', w: 'W', space: 'SPACE' }, false);
+
+      this.pressedNow = [];
+    }
+
+    makeLabel(text) {
+      return this.add.text(0, 0, text, {
+        fontFamily: 'sans-serif', fontSize: '13px', color: '#ffffff', stroke: '#000000', strokeThickness: 3,
+      }).setOrigin(0.5, 1).setDepth(11);
+    }
+
+    createRemote(id, d) {
+      const info = NET.players[id] || { color: 0, name: '?' };
+      const spr = this.physics.add.sprite(d[0], d[1], 'pl' + info.color).setDepth(9);
+      this.remoteGroup.add(spr);
+      spr.body.setAllowGravity(false);
+      spr.body.setImmovable(true);
+      const r = { spr, label: this.makeLabel(info.name), tx: d[0], ty: d[1] };
+      this.remotes[id] = r;
+      return r;
+    }
+
+    die(cause) {
+      if (this.dead) return;
+      this.dead = true;
+      this.me.setTint(0x555555);
+      this.cameras.main.shake(220, 0.012);
+      socket.emit('dead', { a: this.attempt, cause });
+    }
+
+    update(time, delta) {
+      const snap = NET.snap && NET.snap.a === this.attempt ? NET.snap : null;
+      if (snap) this.applySnap(snap);
+      this.handleInput(time);
+      this.updateRemotes(snap);
+      this.checkWorld(snap);
+
+      // 이름표
+      this.meLabel.setPosition(this.me.x, this.me.y - PLAYER.h / 2 - 3);
+      for (const id in this.remotes) {
+        const r = this.remotes[id];
+        r.label.setPosition(r.spr.x, r.spr.y - PLAYER.h / 2 - 3);
+      }
+
+      // 내 상태를 서버로 (30Hz)
+      this.sendAcc += delta;
+      if (this.sendAcc >= SEND_MS && !this.dead) {
+        this.sendAcc = 0;
+        const b = this.me.body;
+        socket.volatile.emit('move', {
+          a: this.attempt,
+          x: this.me.x, y: this.me.y, vx: b.velocity.x, vy: b.velocity.y,
+          f: this.me.flipX ? 1 : 0,
+          p: this.pressedNow,
+          g: this.atGoalNow ? 1 : 0,
+        });
+      }
+    }
+
+    handleInput(time) {
+      const typing = document.activeElement && document.activeElement.tagName === 'INPUT';
+      const k = this.keys;
+      const body = this.me.body;
+      const JD = Phaser.Input.Keyboard.JustDown;
+      const jumpPressed = JD(k.up) || JD(k.w) || JD(k.space);
+      let dir = 0;
+      if (!this.dead && !typing) {
+        if (k.left.isDown || k.a.isDown) dir -= 1;
+        if (k.right.isDown || k.d.isDown) dir += 1;
+      }
+      body.setVelocityX(dir * PLAYER.speed);
+      if (dir < 0) this.me.setFlipX(true);
+      else if (dir > 0) this.me.setFlipX(false);
+
+      if (jumpPressed && !typing) this.jumpBuf = time;
+      if (body.blocked.down || body.touching.down) this.lastGround = time;
+      if (!this.dead && time - this.jumpBuf < 120 && time - this.lastGround < 90 && body.velocity.y > -50) {
+        body.setVelocityY(-PLAYER.jump);
+        this.jumpBuf = -1000;
+        this.lastGround = -1000;
+      }
+    }
+
+    checkWorld(snap) {
+      const b = this.me.body;
+      this.meRect.setTo(b.x, b.y, b.width, b.height);
+      const I = Phaser.Geom.Intersects.RectangleToRectangle;
+
+      // 버튼 위에 서 있는지
+      const pressing = [];
+      if (!this.dead) {
+        for (const z of this.btnZones) if (!pressing.includes(z.id) && I(this.meRect, z.rect)) pressing.push(z.id);
+      }
+      this.pressedNow = pressing;
+
+      // 사망 판정: 가시 / 낭떠러지
+      if (!this.dead) {
+        for (const h of this.hazards) if (I(this.meRect, h)) { this.die('spike'); break; }
+        if (this.me.y > HEIGHT + 40) this.die('fall');
+      }
+
+      // 열쇠
+      if (!this.dead && this.keyRect && !(snap && snap.key) && !this.keyRequested && I(this.meRect, this.keyRect)) {
+        this.keyRequested = true;
+        socket.emit('keyGet', { a: this.attempt });
+      }
+
+      // 탈출 문 (몸 중심이 문 영역 안에 있으면 도착)
+      this.atGoalNow = !this.dead && Phaser.Geom.Rectangle.Contains(this.goalRect, b.center.x, b.center.y);
+    }
+
+    applySnap(snap) {
+      for (const id in this.doorViews) {
+        const open = !!snap.doors[id];
+        if (this.doorOpen[id] !== open) {
+          this.doorOpen[id] = open;
+          const v = this.doorViews[id];
+          v.rect.setAlpha(open ? 0.12 : 0.95);
+          if (v.label) v.label.setVisible(!open);
+        }
+      }
+      for (const v of this.btnViews) {
+        const p = !!snap.pressed[v.id];
+        v.plate.setScale(1, p ? 0.4 : 1);
+        v.plate.y = v.y0 + (p ? 3 : 0);
+      }
+      if (snap.key && this.keyObj && this.keyObj.visible) this.keyObj.setVisible(false);
+
+      $('hudTime').textContent = fmt(snap.t);
+      $('hudKey').textContent = snap.key ? '🗝 열쇠 획득!' : '🗝 열쇠 없음';
+      $('hudGoal').textContent = `탈출 ${snap.goal}/${snap.n}`;
+    }
+
+    updateRemotes(snap) {
+      if (!snap) return;
+      const alive = new Set();
+      for (const id in snap.players) {
+        if (id === socket.id) continue;
+        alive.add(id);
+        const d = snap.players[id];
+        const r = this.remotes[id] || this.createRemote(id, d);
+        r.tx = d[0]; r.ty = d[1];
+        r.spr.setFlipX(!!d[4]);
+      }
+      for (const id in this.remotes) {
+        if (!alive.has(id)) {
+          this.remotes[id].spr.destroy();
+          this.remotes[id].label.destroy();
+          delete this.remotes[id];
+        }
+      }
+      // 속도 기반 보간: 위치를 순간이동시키지 않고 속도로 따라가야
+      // 그 위에 올라탄 내 캐릭터가 같이 움직인다 (Arcade의 플랫폼 운반)
+      for (const id in this.remotes) {
+        const r = this.remotes[id];
+        const dx = r.tx - r.spr.x, dy = r.ty - r.spr.y;
+        if (Math.abs(dx) > 160 || Math.abs(dy) > 160) r.spr.body.reset(r.tx, r.ty);
+        else r.spr.body.setVelocity(dx * 12, dy * 12);
+      }
+    }
+  }
+
+  const game = new Phaser.Game({
+    type: Phaser.AUTO,
+    parent: 'game',
+    width: WIDTH,
+    height: HEIGHT,
+    backgroundColor: '#161a33',
+    scale: { mode: Phaser.Scale.FIT, autoCenter: Phaser.Scale.CENTER_BOTH },
+    physics: { default: 'arcade', arcade: { gravity: { y: PLAYER.gravity }, debug: false } },
+    scene: [BootScene, GameScene], // 첫 씬만 자동 시작, GameScene은 stageStart 때 시작
+  });
+})();
+
+</script>
+</body>
+</html>
